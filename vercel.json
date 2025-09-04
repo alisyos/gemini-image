@@ -3,9 +3,6 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
-  "env": {
-    "GEMINI_API_KEY": "@gemini_api_key"
-  },
   "functions": {
     "app/api/generate-image/route.ts": {
       "maxDuration": 60

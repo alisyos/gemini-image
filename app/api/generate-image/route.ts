@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Maximum prompt length (characters)
@@ -92,10 +92,13 @@ export async function POST(request: NextRequest) {
     console.log('[API] Enhanced prompt length:', enhancedPrompt.length);
 
     // Build contents array based on whether we have reference image
-    let contents: any[] = [];
+    let contents: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
     
     if (referenceImage) {
-      // Extract base64 data from data URL if needed
+      // Extract base64 data from all images
+      const allImages: Array<{ data: string; description?: string; isMain?: boolean }> = [];
+      
+      // Process reference image
       let imageData = referenceImage;
       if (referenceImage.startsWith('data:')) {
         const base64Match = referenceImage.match(/base64,(.*)/);
@@ -104,9 +107,14 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // Include previous conversation if in multi-turn mode
+      // Check if we have multiple images
       if (previousImages && previousImages.length > 0) {
-        console.log('[API] Building multi-turn conversation context...');
+        console.log('[API] Multi-image mode detected');
+        console.log('[API] Number of additional images:', previousImages.length);
+        
+        // Collect all images first
+        allImages.push({ data: imageData, description: "Image 1" });
+        
         for (const prev of previousImages) {
           if (prev.image) {
             let prevImageData = prev.image;
@@ -116,43 +124,65 @@ export async function POST(request: NextRequest) {
                 prevImageData = match[1];
               }
             }
-            // Use enhanced prompt for previous images too if they contain Korean
-            const prevHasKorean = /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(prev.prompt);
-            const enhancedPrevPrompt = prevHasKorean 
-              ? `Please create and modify according to the request below: ${prev.prompt}`
-              : prev.prompt;
-            
-            contents.push([
-              { text: enhancedPrevPrompt },
-              {
-                inlineData: {
-                  mimeType: "image/png",
-                  data: prevImageData
-                }
-              }
-            ]);
+            allImages.push({ 
+              data: prevImageData, 
+              description: prev.description || prev.prompt,
+              isMain: prev.isMain 
+            });
           }
         }
-      }
-      
-      // Add current prompt with reference image
-      contents = [
-        { text: enhancedPrompt },
-        {
+        
+        // Build contents array in the correct order:
+        // 1. All images first
+        allImages.forEach((img, index) => {
+          contents.push({
+            inlineData: {
+              mimeType: "image/png",
+              data: img.data
+            }
+          });
+          console.log(`[API] Added image ${index + 1}${img.isMain ? ' (MAIN)' : ''}: ${img.description?.substring(0, 50)}`);
+        });
+        
+        // 2. Then the combined text prompt with clear instructions
+        const mainImageIndex = allImages.findIndex(img => img.isMain);
+        const mainImageNum = mainImageIndex >= 0 ? mainImageIndex + 1 : 1; // Default to image 1 as main
+        
+        contents.push({ 
+          text: enhancedPrompt + `\n\nIMPORTANT: Image ${mainImageNum} is the MAIN image to be transformed. Other images are reference images for style, background, or additional elements.`
+        });
+        
+        console.log(`[API] Main image is Image ${mainImageNum}`);
+      } else {
+        // Single image mode
+        contents.push({
           inlineData: {
             mimeType: "image/png",
             data: imageData
           }
-        }
-      ];
-      console.log('[API] Using reference image with enhanced prompt for generation');
+        });
+        contents.push({ text: enhancedPrompt });
+      }
+      
+      console.log('[API] Total content parts:', contents.length);
+      console.log('[API] Content structure:', contents.map(c => c.text ? 'text' : 'image'));
     } else {
       // Text-only prompt
-      contents = enhancedPrompt;
+      contents = [{ text: enhancedPrompt }];
       console.log('[API] Using text-only enhanced prompt for generation');
     }
     
-    console.log('[API] Using prompt and image for generation...');
+    // Debug log for final contents being sent to Gemini
+    console.log('[API] ========== GEMINI API REQUEST ==========');
+    console.log('[API] Final contents being sent to Gemini:');
+    contents.forEach((content, index) => {
+      if (content.text) {
+        console.log(`[API] Part ${index + 1} - TEXT:`, content.text.substring(0, 200));
+      } else if (content.inlineData) {
+        console.log(`[API] Part ${index + 1} - IMAGE: ${content.inlineData.mimeType}, size: ${content.inlineData.data.length} chars`);
+      }
+    });
+    console.log('[API] ========================================');
     
     const response = await Promise.race([
       ai.models.generateContent({

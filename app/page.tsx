@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 
 interface GenerationResult {
   imageUrl: string | null;
@@ -28,7 +29,7 @@ export default function Home() {
   useEffect(() => {
     console.log('[Debug] Conversation history updated:', conversationHistory);
     if (typeof window !== 'undefined') {
-      (window as any).debugHistory = conversationHistory;
+      (window as typeof window & { debugHistory: typeof conversationHistory }).debugHistory = conversationHistory;
     }
   }, [conversationHistory]);
   const [isMultiTurnMode, setIsMultiTurnMode] = useState(true);
@@ -268,10 +269,24 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 p-4">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-xl p-8 mt-10">
-          <h1 className="text-4xl font-bold text-center mb-2 bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
-            Gemini AI 이미지 생성기
-          </h1>
+        {/* Navigation Header */}
+        <div className="bg-white rounded-xl shadow-lg p-4 mb-6 mt-6">
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
+              단일 이미지 생성기
+            </h1>
+            <nav className="flex gap-4">
+              <Link href="/" className="px-4 py-2 bg-purple-600 text-white rounded-lg">
+                단일 이미지 생성기
+              </Link>
+              <Link href="/multi-image" className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
+                다중 이미지 생성기
+              </Link>
+            </nav>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-xl p-8">
           <p className="text-center text-gray-600 mb-8">
             텍스트 설명을 입력하면 AI가 이미지를 생성합니다
           </p>
